@@ -8,6 +8,10 @@ Python acts as the coordinator, running three sequential Agent SDK queries:
 
 Each query runs as an independent Claude agent with its own system prompt
 and tool restrictions. Results flow from one to the next via Python.
+
+Enhancements:
+  - Custom MCP server (king-makers-db) for past diagnostic lookups
+  - Observability hooks logging every tool call to audit_log.jsonl
 """
 
 import anyio
@@ -16,8 +20,9 @@ from datetime import datetime
 
 from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
 
-
 from prompts import RESEARCHER_PROMPT, ANALYST_PROMPT, WRITER_PROMPT
+from tools import past_diagnostics_server
+from hooks import tool_use_hooks
 
 
 async def run_agent(
@@ -25,6 +30,7 @@ async def run_agent(
     system_prompt: str,
     allowed_tools: list[str],
     label: str,
+    include_mcp: bool = False,
 ) -> str:
     """
     Run a single Agent SDK query and collect the text response.
@@ -34,6 +40,7 @@ async def run_agent(
         system_prompt: The agent's persona and methodology.
         allowed_tools: Which tools this agent can use (principle of least privilege).
         label: Human-readable name for logging.
+        include_mcp: Whether to attach the King Makers MCP server.
 
     Returns:
         The agent's full text response as a string.
@@ -42,11 +49,26 @@ async def run_agent(
     print(f"  Running: {label}")
     print(f"{'='*60}\n")
 
-    options = ClaudeAgentOptions(
-        system_prompt=system_prompt,
-        allowed_tools=allowed_tools,
-        max_turns=15,  # Safety limit: stop after 15 tool-use cycles
-    )
+    # Build options with hooks (always) and MCP server (conditional)
+    options_kwargs = {
+        "system_prompt": system_prompt,
+        "allowed_tools": allowed_tools,
+        "max_turns": 15,
+        "hooks": tool_use_hooks,
+    }
+
+    # Attach MCP server only to agents that need it
+    if include_mcp:
+        options_kwargs["mcp_servers"] = {
+            "king-makers-db": past_diagnostics_server,
+        }
+        # Add MCP tool names to allowed tools
+        options_kwargs["allowed_tools"] = allowed_tools + [
+            "mcp__king-makers-db__check_past_diagnostics",
+            "mcp__king-makers-db__register_diagnostic",
+        ]
+
+    options = ClaudeAgentOptions(**options_kwargs)
 
     collected_text = []
 
@@ -55,7 +77,6 @@ async def run_agent(
             for block in message.content:
                 if isinstance(block, TextBlock):
                     collected_text.append(block.text)
-                    # Print a progress dot for each text block received
                     print(".", end="", flush=True)
 
     result = "\n".join(collected_text)
@@ -85,6 +106,8 @@ async def run_diagnostic(company_url: str, problem_statement: str, output_dir: s
 
     # ---------------------------------------------------------------
     # STEP 1: Research the company
+    # The researcher gets the MCP server so it can check for
+    # previous diagnostics before starting fresh research.
     # ---------------------------------------------------------------
     researcher_prompt = f"""Research the following company thoroughly.
 
@@ -92,8 +115,13 @@ Company URL: {company_url}
 
 The client has described their challenge as: "{problem_statement}"
 
-Use this context to focus your research on areas most relevant to their 
-stated problem. Start by fetching their website, then run targeted searches.
+FIRST, use the check_past_diagnostics tool to see if King Makers has
+analyzed this company before. If a previous diagnostic exists, review
+it and focus your research on what has changed since then.
+
+THEN, use your web tools to research the company. Start by fetching
+their website, then run targeted searches. Focus on areas most
+relevant to their stated problem.
 
 Return your findings in the structured format specified in your instructions."""
 
@@ -102,6 +130,7 @@ Return your findings in the structured format specified in your instructions."""
         system_prompt=RESEARCHER_PROMPT,
         allowed_tools=["WebSearch", "WebFetch"],
         label="Company Researcher",
+        include_mcp=True,
     )
 
     # ---------------------------------------------------------------
@@ -119,8 +148,8 @@ Here is what our researcher found about the company:
 
 The client's stated challenge is: "{problem_statement}"
 
-Based on the researcher's findings, identify the industry this company 
-operates in, map 3-5 competitors, and analyze macro trends. 
+Based on the researcher's findings, identify the industry this company
+operates in, map 3-5 competitors, and analyze macro trends.
 Return your findings in the structured format specified in your instructions."""
 
     industry_analysis = await run_agent(
@@ -133,11 +162,9 @@ Return your findings in the structured format specified in your instructions."""
     # ---------------------------------------------------------------
     # STEP 3: Write the diagnostic brief
     # ---------------------------------------------------------------
-    # Ensure the output directory exists
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Generate a filename based on the company URL
     company_slug = company_url.replace("https://", "").replace("http://", "").replace("/", "_").rstrip("_")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     brief_filename = f"diagnostic_brief_{company_slug}_{timestamp}.md"
@@ -158,7 +185,7 @@ Client's stated challenge: "{problem_statement}"
 
 ---
 
-Synthesize all of the above into a polished diagnostic brief following 
+Synthesize all of the above into a polished diagnostic brief following
 the exact document structure in your instructions.
 
 Save the completed brief as a markdown file at: {brief_path}
@@ -173,25 +200,47 @@ Today's date is {datetime.now().strftime('%B %d, %Y')}."""
     )
 
     # ---------------------------------------------------------------
-    # STEP 4: Verify the output exists
+    # STEP 4: Register the completed diagnostic
+    # This step uses a separate agent call to log the engagement
+    # in the King Makers registry via the MCP tool.
+    # ---------------------------------------------------------------
+    company_name = company_url.replace("https://", "").replace("http://", "").split("/")[0]
+
+    register_prompt = f"""Register this completed diagnostic in King Makers' internal registry.
+
+Use the register_diagnostic tool with these details:
+- company_name: "{company_name}"
+- company_url: "{company_url}"
+- brief_path: "{brief_path}"
+- problem_statement: "{problem_statement}"
+"""
+
+    await run_agent(
+        prompt=register_prompt,
+        system_prompt="You are a system assistant. Use the register_diagnostic tool to log the completed engagement.",
+        allowed_tools=[],
+        label="Registry Update",
+        include_mcp=True,
+    )
+
+    # ---------------------------------------------------------------
+    # STEP 5: Verify the output exists
     # ---------------------------------------------------------------
     if brief_path.exists():
         print(f"\n{'#'*60}")
         print(f"  DIAGNOSTIC BRIEF GENERATED SUCCESSFULLY")
         print(f"  Location: {brief_path}")
         print(f"  Size: {brief_path.stat().st_size:,} bytes")
+        print(f"  Audit log: output/audit_log.jsonl")
         print(f"{'#'*60}\n")
         return str(brief_path)
     else:
-        # The writer may have saved to a slightly different path
-        # Check if any new .md files exist in the output directory
         md_files = sorted(output_path.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True)
         if md_files:
             actual_path = md_files[0]
             print(f"\n  Brief found at: {actual_path}")
             return str(actual_path)
         else:
-            # Fallback: save the writer's text output directly
             print("\n  Writer did not save a file. Saving output directly...")
             brief_path.write_text(writer_output)
             print(f"  Saved to: {brief_path}")
