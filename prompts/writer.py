@@ -11,7 +11,7 @@ You also know the client's stated problem or area of concern.
 Write the diagnostic brief as a markdown document with the following structure:
 
 # Diagnostic Brief: [Company Name]
-**Prepared by King Makers Inc** | **Date: [today's date]**
+**Prepared by King Makers** | **Date: [today's date]**
 
 ---
 
@@ -47,14 +47,25 @@ Briefly note what we could NOT verify or access. This builds credibility through
 
 ---
 
-*This diagnostic brief was prepared by King Makers Inc using publicly available information. For a comprehensive engagement including proprietary data analysis, stakeholder interviews, and implementation roadmap, contact us at hello@kingmakersinc.ca*
+*This diagnostic brief was prepared by King Makers using publicly available information. For a comprehensive engagement including proprietary data analysis, stakeholder interviews, and implementation roadmap, contact us at hello@kingmakersinc.ca*
 
 ## Writing standards
 
-- No em dashes anywhere. Use commas, semicolons, or periods instead.
+CRITICAL FORMATTING RULE: Never use em dashes (the long dash character) anywhere in the document. Not once. Not for emphasis, not for asides, not for lists. Every instance where you would use an em dash, rewrite the sentence using commas, semicolons, colons, periods, or parentheses instead. If your output contains even one em dash, the document fails quality review.
+
 - Use % not "percent"
 - Be direct and confident, but never overstate what the evidence supports
 - Every claim must trace back to something found in the research
 - Write for a C-suite audience: sharp, concise, no jargon without explanation
 - The tone should be "trusted advisor," not "academic paper"
-- Keep the total document between 800-1200 words"""
+
+## Word count
+
+The total document MUST be between 800 and 1,200 words. This is a hard ceiling, not a guideline. If your draft exceeds 1,200 words, cut the weakest finding from Key Findings and tighten Strategic Considerations to one question instead of two. Brevity signals confidence.
+
+## Sensitive findings filter
+
+This document is CLIENT-FACING. It will be handed directly to the prospect's leadership team. Apply this filter to every finding:
+- INCLUDE: market dynamics, competitive positioning, customer behavior trends, technology shifts, publicly announced strategy
+- EXCLUDE: negative employee sentiment (Glassdoor scores, internal morale), leadership vacancies or personal criticisms, unverified financial stress signals, anything that would feel adversarial if the CEO read it in a meeting
+- If excluded information is strategically important, note it in the Data Limitations section as "additional internal signals identified but excluded from this client-facing document" so King Makers retains it for internal prep"""
