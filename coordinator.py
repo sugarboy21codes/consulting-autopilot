@@ -2,16 +2,17 @@
 Coordinator module for the Consulting Autopilot.
 
 Python acts as the coordinator, running three sequential Agent SDK queries:
-1. Researcher - gathers company intelligence
-2. Analyst - maps competitive landscape
+1. Researcher - gathers company intelligence (with past diagnostic lookup)
+2. Analyst - maps competitive landscape (with RAG knowledge base)
 3. Writer - synthesizes everything into a diagnostic brief
 
 Each query runs as an independent Claude agent with its own system prompt
 and tool restrictions. Results flow from one to the next via Python.
 
-Enhancements:
-  - Custom MCP server (king-makers-db) for past diagnostic lookups
-  - Observability hooks logging every tool call to audit_log.jsonl
+Capabilities:
+  - Custom MCP servers for internal data access
+  - Observability hooks logging every tool call
+  - RAG knowledge base for institutional knowledge retrieval
 """
 
 import anyio
@@ -21,8 +22,29 @@ from datetime import datetime
 from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
 
 from prompts import RESEARCHER_PROMPT, ANALYST_PROMPT, WRITER_PROMPT
-from tools import past_diagnostics_server
+from tools import past_diagnostics_server, knowledge_base_server, get_knowledge_base
 from hooks import tool_use_hooks
+
+
+def seed_knowledge_base(output_dir: str = "output") -> None:
+    """
+    Ingest any existing diagnostic briefs into the RAG knowledge base.
+    This runs once at pipeline start to ensure the analyst has access
+    to all prior institutional knowledge.
+    """
+    kb = get_knowledge_base()
+    output_path = Path(output_dir)
+
+    if not output_path.exists():
+        print("  Knowledge base: no documents to ingest.")
+        return
+
+    results = kb.ingest_directory(output_path)
+    stats = kb.get_stats()
+
+    print(f"  Knowledge base: {results['files_processed']} new files ingested, "
+          f"{results['files_skipped']} already indexed, "
+          f"{stats['total_chunks']} total chunks stored.")
 
 
 async def run_agent(
@@ -30,7 +52,8 @@ async def run_agent(
     system_prompt: str,
     allowed_tools: list[str],
     label: str,
-    include_mcp: bool = False,
+    mcp_servers: dict | None = None,
+    extra_allowed_tools: list[str] | None = None,
 ) -> str:
     """
     Run a single Agent SDK query and collect the text response.
@@ -38,9 +61,10 @@ async def run_agent(
     Args:
         prompt: The task-specific instruction for this agent.
         system_prompt: The agent's persona and methodology.
-        allowed_tools: Which tools this agent can use (principle of least privilege).
+        allowed_tools: Which built-in tools this agent can use.
         label: Human-readable name for logging.
-        include_mcp: Whether to attach the King Makers MCP server.
+        mcp_servers: Optional dict of MCP servers to attach.
+        extra_allowed_tools: Additional tool names to allow (MCP tools).
 
     Returns:
         The agent's full text response as a string.
@@ -49,24 +73,21 @@ async def run_agent(
     print(f"  Running: {label}")
     print(f"{'='*60}\n")
 
-    # Build options with hooks (always) and MCP server (conditional)
+    # Merge allowed tools
+    all_allowed_tools = allowed_tools.copy()
+    if extra_allowed_tools:
+        all_allowed_tools.extend(extra_allowed_tools)
+
+    # Build options
     options_kwargs = {
         "system_prompt": system_prompt,
-        "allowed_tools": allowed_tools,
+        "allowed_tools": all_allowed_tools,
         "max_turns": 15,
         "hooks": tool_use_hooks,
     }
 
-    # Attach MCP server only to agents that need it
-    if include_mcp:
-        options_kwargs["mcp_servers"] = {
-            "king-makers-db": past_diagnostics_server,
-        }
-        # Add MCP tool names to allowed tools
-        options_kwargs["allowed_tools"] = allowed_tools + [
-            "mcp__king-makers-db__check_past_diagnostics",
-            "mcp__king-makers-db__register_diagnostic",
-        ]
+    if mcp_servers:
+        options_kwargs["mcp_servers"] = mcp_servers
 
     options = ClaudeAgentOptions(**options_kwargs)
 
@@ -105,9 +126,15 @@ async def run_diagnostic(company_url: str, problem_statement: str, output_dir: s
     print(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     # ---------------------------------------------------------------
+    # STEP 0: Seed the RAG knowledge base with existing briefs
+    # ---------------------------------------------------------------
+    print(f"\n  Initializing knowledge base...")
+    seed_knowledge_base(output_dir)
+
+    # ---------------------------------------------------------------
     # STEP 1: Research the company
-    # The researcher gets the MCP server so it can check for
-    # previous diagnostics before starting fresh research.
+    # The researcher gets the client DB MCP server so it can check
+    # for previous diagnostics before starting fresh research.
     # ---------------------------------------------------------------
     researcher_prompt = f"""Research the following company thoroughly.
 
@@ -130,11 +157,19 @@ Return your findings in the structured format specified in your instructions."""
         system_prompt=RESEARCHER_PROMPT,
         allowed_tools=["WebSearch", "WebFetch"],
         label="Company Researcher",
-        include_mcp=True,
+        mcp_servers={
+            "king-makers-db": past_diagnostics_server,
+        },
+        extra_allowed_tools=[
+            "mcp__king-makers-db__check_past_diagnostics",
+            "mcp__king-makers-db__register_diagnostic",
+        ],
     )
 
     # ---------------------------------------------------------------
     # STEP 2: Analyze the industry
+    # The analyst gets the RAG MCP server so it can retrieve
+    # institutional knowledge from past engagements.
     # ---------------------------------------------------------------
     analyst_prompt = f"""Analyze the competitive landscape and industry context for the following company.
 
@@ -148,8 +183,15 @@ Here is what our researcher found about the company:
 
 The client's stated challenge is: "{problem_statement}"
 
-Based on the researcher's findings, identify the industry this company
-operates in, map 3-5 competitors, and analyze macro trends.
+FIRST, use the search_knowledge_base tool to check if King Makers has
+institutional knowledge about this industry or similar challenges from
+past engagements. Search for the industry name and the type of challenge
+described. This gives you a head start with patterns we have already identified.
+
+THEN, use your web tools to research the industry. Identify 3-5
+competitors, analyze macro trends, and map common pain points.
+
+Combine insights from the knowledge base with fresh web research.
 Return your findings in the structured format specified in your instructions."""
 
     industry_analysis = await run_agent(
@@ -157,6 +199,13 @@ Return your findings in the structured format specified in your instructions."""
         system_prompt=ANALYST_PROMPT,
         allowed_tools=["WebSearch", "WebFetch"],
         label="Industry Analyst",
+        mcp_servers={
+            "king-makers-rag": knowledge_base_server,
+        },
+        extra_allowed_tools=[
+            "mcp__king-makers-rag__search_knowledge_base",
+            "mcp__king-makers-rag__knowledge_base_stats",
+        ],
     )
 
     # ---------------------------------------------------------------
@@ -201,8 +250,6 @@ Today's date is {datetime.now().strftime('%B %d, %Y')}."""
 
     # ---------------------------------------------------------------
     # STEP 4: Register the completed diagnostic
-    # This step uses a separate agent call to log the engagement
-    # in the King Makers registry via the MCP tool.
     # ---------------------------------------------------------------
     company_name = company_url.replace("https://", "").replace("http://", "").split("/")[0]
 
@@ -215,23 +262,34 @@ Use the register_diagnostic tool with these details:
 - problem_statement: "{problem_statement}"
 """
 
-    await run_agent(
-        prompt=register_prompt,
-        system_prompt="You are a system assistant. Use the register_diagnostic tool to log the completed engagement.",
-        allowed_tools=[],
-        label="Registry Update",
-        include_mcp=True,
-    )
+   try:
+        await run_agent(
+            prompt=register_prompt,
+            system_prompt="You are a system assistant. Use the register_diagnostic tool to log the completed engagement.",
+            allowed_tools=[],
+            label="Registry Update",
+            mcp_servers={
+                "king-makers-db": past_diagnostics_server,
+            },
+            extra_allowed_tools=[
+                "mcp__king-makers-db__register_diagnostic",
+            ],
+        )
+    except Exception as e:
+        print(f"\n  Registry update skipped (non-critical): {e}")
 
     # ---------------------------------------------------------------
     # STEP 5: Verify the output exists
     # ---------------------------------------------------------------
     if brief_path.exists():
+        kb = get_knowledge_base()
+        stats = kb.get_stats()
         print(f"\n{'#'*60}")
         print(f"  DIAGNOSTIC BRIEF GENERATED SUCCESSFULLY")
         print(f"  Location: {brief_path}")
         print(f"  Size: {brief_path.stat().st_size:,} bytes")
         print(f"  Audit log: output/audit_log.jsonl")
+        print(f"  Knowledge base: {stats['total_chunks']} chunks stored")
         print(f"{'#'*60}\n")
         return str(brief_path)
     else:

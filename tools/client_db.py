@@ -2,15 +2,9 @@
 Custom MCP Server: Past Diagnostics Database
 
 An in-process MCP server that gives Claude access to King Makers'
-internal diagnostic history. This demonstrates:
-  - The @tool decorator for defining custom tools
-  - create_sdk_mcp_server for bundling tools into an MCP server
-  - Tool annotations for metadata hints
-  - Enterprise integration patterns (local DB → swap for Supabase in production)
-
-Capgemini JD alignment:
-  "Design and develop MCP servers, tools, plugins, skills, hooks,
-   and custom integrations"
+internal diagnostic history. This demonstrates custom MCP tool development with the Claude Agent SDK,
+including the @tool decorator, create_sdk_mcp_server, tool annotations,
+and enterprise integration patterns.
 """
 
 import os

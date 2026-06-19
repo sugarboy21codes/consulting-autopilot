@@ -2,8 +2,11 @@ __pycache__/
 *.pyc
 .env
 output/*.md
+output/audit_log.jsonl
+output/registry.json
 .venv/
 venv/
 *.egg-info/
 dist/
 build/
+.chromadb/

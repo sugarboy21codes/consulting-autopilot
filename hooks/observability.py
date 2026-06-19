@@ -2,17 +2,9 @@
 Observability Hooks for the Consulting Autopilot
 
 PreToolUse and PostToolUse hooks that log every tool call to a
-structured JSON audit file. This demonstrates:
-  - Hook callback functions with proper signatures
-  - HookMatcher for pattern matching
-  - Structured logging for agent observability
-  - Production governance patterns (audit trails)
-
-Capgemini JD alignment:
-  "Build Agent Harnesses for testing, evaluation, observability,
-   and governance of AI agents"
-  "Establish AI evaluation frameworks, guardrails, monitoring,
-   and production deployment patterns"
+structured JSON audit file. This demonstrates hook callbacks for agent observability, including
+PreToolUse and PostToolUse event handling, structured audit logging,
+and production governance patterns.
 """
 
 import json
