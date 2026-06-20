@@ -38,9 +38,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",           # Local Next.js dev
-        "http://localhost:3001",           # Local Next.js dev (alt port)
-        "https://consulting.kingmakersinc.ca",  # Production frontend
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://consulting-autopilot.vercel.app",
+        "https://consulting.kingmakersinc.ca",
     ],
     allow_credentials=True,
     allow_methods=["*"],
