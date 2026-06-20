@@ -120,6 +120,8 @@ async def run_diagnostic_job(job_id: str):
         job["brief_content"] = brief_content
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         job["status"] = "failed"
         job["completed_at"] = datetime.now().isoformat()
         job["error"] = str(e)
