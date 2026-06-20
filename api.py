@@ -39,6 +39,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",           # Local Next.js dev
+        "http://localhost:3001",           # Local Next.js dev (alt port)
         "https://consulting.kingmakersinc.ca",  # Production frontend
     ],
     allow_credentials=True,
