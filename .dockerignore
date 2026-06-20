@@ -1,0 +1,10 @@
+.git
+venv/
+.venv/
+__pycache__/
+*.pyc
+.chromadb/
+output/audit_log.jsonl
+output/registry.json
+frontend/node_modules/
+.env
