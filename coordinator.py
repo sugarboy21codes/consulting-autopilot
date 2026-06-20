@@ -262,7 +262,7 @@ Use the register_diagnostic tool with these details:
 - problem_statement: "{problem_statement}"
 """
 
-   try:
+    try:
         await run_agent(
             prompt=register_prompt,
             system_prompt="You are a system assistant. Use the register_diagnostic tool to log the completed engagement.",
