@@ -82,7 +82,7 @@ async def run_agent(
     options_kwargs = {
         "system_prompt": system_prompt,
         "allowed_tools": all_allowed_tools,
-        "max_turns": 15,
+        "max_turns": 30,
         "hooks": tool_use_hooks,
     }
 
