@@ -34,7 +34,7 @@ export async function submitDiagnostic(
 ): Promise<DiagnosticJob> {
   const res = await fetch(`${API_BASE}/diagnostics`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
     body: JSON.stringify(request),
   });
 
@@ -49,7 +49,9 @@ export async function submitDiagnostic(
  * Get a specific diagnostic job by ID.
  */
 export async function getDiagnostic(jobId: string): Promise<DiagnosticJob> {
-  const res = await fetch(`${API_BASE}/diagnostics/${jobId}`);
+  const res = await fetch(`${API_BASE}/diagnostics/${jobId}`, {
+    headers: { "ngrok-skip-browser-warning": "true" },
+  });
 
   if (!res.ok) {
     throw new Error(`Failed to get diagnostic: ${res.statusText}`);
@@ -62,7 +64,9 @@ export async function getDiagnostic(jobId: string): Promise<DiagnosticJob> {
  * List all diagnostic jobs, most recent first.
  */
 export async function listDiagnostics(): Promise<DiagnosticJob[]> {
-  const res = await fetch(`${API_BASE}/diagnostics`);
+  const res = await fetch(`${API_BASE}/diagnostics`, {
+    headers: { "ngrok-skip-browser-warning": "true" },
+  });
 
   if (!res.ok) {
     throw new Error(`Failed to list diagnostics: ${res.statusText}`);
@@ -107,7 +111,9 @@ export async function pollDiagnostic(
  */
 export async function healthCheck(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/health`);
+    const res = await fetch(`${API_BASE}/health`, {
+      headers: { "ngrok-skip-browser-warning": "true" },
+    });
     return res.ok;
   } catch {
     return false;
