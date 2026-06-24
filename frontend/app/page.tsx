@@ -6,6 +6,7 @@ import {
   listDiagnostics,
   pollDiagnostic,
   healthCheck,
+  downloadPdf,
   DiagnosticJob,
 } from "@/lib/api";
 
@@ -208,20 +209,12 @@ function BriefViewer({ job }: { job: DiagnosticJob | null }) {
     );
   }
 
-  const handleDownload = () => {
-    if (!job.brief_content) return;
-
-    const blob = new Blob([job.brief_content], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const companyName = job.company_url
-      .replace("https://", "")
-      .replace("http://", "")
-      .split("/")[0];
-    a.href = url;
-    a.download = `diagnostic_brief_${companyName}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleDownload = async () => {
+    try {
+      await downloadPdf(job.job_id);
+    } catch (err) {
+      console.error("PDF download failed:", err);
+    }
   };
 
   return (
@@ -239,7 +232,7 @@ function BriefViewer({ job }: { job: DiagnosticJob | null }) {
           onClick={handleDownload}
           className="inline-flex items-center px-3 py-1.5 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-800 transition-colors"
         >
-          Download .md
+          Download PDF
         </button>
       </div>
       <div className="p-6 prose prose-sm max-w-none overflow-auto max-h-[600px]">

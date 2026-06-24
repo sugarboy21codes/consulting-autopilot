@@ -14,6 +14,7 @@ Endpoints:
 
 import asyncio
 import uuid
+import io
 from datetime import datetime
 from pathlib import Path
 
@@ -22,7 +23,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 
 from coordinator import run_diagnostic
-
+from fastapi.responses import StreamingResponse
+from pdf_generator import markdown_to_pdf
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -38,6 +40,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "*",
         "http://localhost:3000",
         "http://localhost:3001",
         "https://consulting-autopilot.vercel.app",
@@ -189,3 +192,35 @@ async def health_check():
         "service": "consulting-autopilot",
         "timestamp": datetime.now().isoformat(),
     }
+
+# -------------------------------------------------
+# PDF download
+# -------------------------------------------------
+
+@app.get("/diagnostics/{job_id}/pdf")
+async def download_diagnostic_pdf(job_id: str):
+    """Return the diagnostic brief as a styled PDF download."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = jobs[job_id]
+
+    if job["status"] != "complete":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job is not complete (status: {job['status']})",
+        )
+
+    markdown_text = job.get("brief_content", "")
+    if not markdown_text:
+        raise HTTPException(status_code=404, detail="No brief content found")
+
+    pdf_bytes = markdown_to_pdf(markdown_text)
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="diagnostic_brief_{job_id[:8]}.pdf"'
+        },
+    )

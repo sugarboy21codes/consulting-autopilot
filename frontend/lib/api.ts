@@ -119,3 +119,25 @@ export async function healthCheck(): Promise<boolean> {
     return false;
   }
 }
+
+export async function downloadPdf(jobId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/diagnostics/${jobId}/pdf`, {
+    headers: {
+      "ngrok-skip-browser-warning": "true",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`PDF download failed: ${response.statusText}`);
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `diagnostic_brief_${jobId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
